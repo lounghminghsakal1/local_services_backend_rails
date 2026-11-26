@@ -15,6 +15,65 @@ module Bookings
           raise AppError.new("Booking must be at status of pending admin review, but its #{@booking.status}", status: :unprocessable_entity)
         end
 
+        # fetch the partners who are currently not in any work, who are within initial radius defined in search round, who can provide the service that booking requested
+        # eligible_partners = find_eligible_partners(10)
+
+        # if eligible_partners.empty?
+        #   # no eligible partner is available within 10 km radius so increase radius upto 20km
+        #   eligible_partners = find_eligible_partners(20)
+        #   if eligible_partners.empty?
+        #     eligible_partners = find_eligible_partners(50)
+        #     if eligible_partners.empty?
+        #       raise AppError.new("No eligible partner is available within 50km radius")
+        #     end
+        #   end
+        # end
+
+        eligible_partners = []
+        radius = 10
+        while eligible_partners.empty?
+          break if initial_radius > 50
+          eligible_partners = find_eligible_partners(radius)
+          radius += 20
+        end
+
+        if eligible_partners.empty?
+          raise AppError.new("No eligible partner is found within 50km radius", status: :unprocessable_entity)
+        end
+
+        booking_offer_ids = []
+        # Got eligible partners so send them booking offer and create booking round entry
+        eligible_partners.each do |partner|
+          created_booking_offer = partner.booking_offers.create!(
+            booking: @booking,
+            assigned_by_admin: @admin,
+            source: "broadcast",
+            offered_at: Time.now,
+            search_radius_km: 10,
+            expires_at: 10.minutes.from_now,
+          )
+          booking_offer_ids.push(created_booking_offer.id)
+        end
+
+        @booking.booking_search_rounds.create!(
+          radius_km: 10,
+          status: "searching",
+          started_at: Time.now,
+          deadline_at: 10.minutes.from_now,
+        )
+
+        @booking.update!(status: "searching_partner", assignment_mode: "broadcast")
+        end
+
+      booking_offer_ids.each do |booking_offer_id|
+        BookingOfferExpirationJob.set(wait_until: 10.minutes.from_now).perform_later(booking_offer_id)
+      end
+      @booking
+      end
+
+      private
+
+      def find_eligible_partners(radius_km: 10)
         fresh_after = 3.hours.ago
 
         partner_lat_sql = <<~SQL
@@ -70,9 +129,7 @@ distance_sql = <<~SQL
   )
 SQL
 
-
-      # fetch the partners who are currently not in any work, who are within initial radius defined in search round, who can provide the service that booking requested
-      eligible_partners = Partner.joins(:partner_services)
+        Partner.joins(:partner_services)
                                   .joins("LEFT JOIN addresses residential_addresses ON residential_addresses.id = partners.residential_address_id") # left join keeps left table records (partners) so the partners who have no residential address record but fresh lat, long updates will remain
                                   .where(
                                     partner_services: {
@@ -91,39 +148,9 @@ SQL
           fresh_after: fresh_after,
           booking_lat: booking_lat,
           booking_long: booking_long,
-          radius_km: 10
+          radius_km: radius_km
         )
         .distinct
-
-
-        booking_offers_ids = []
-        # Got eligible partners so send them booking offer and create booking round entry
-        eligible_partners.each do |partner|
-          created_booking_offer = partner.booking_offers.create!(
-            booking: @booking,
-            assigned_by_admin: @admin,
-            source: "broadcast",
-            offered_at: Time.now,
-            search_radius_km: 10,
-            expires_at: 10.minutes.from_now,
-          )
-          booking_offers_ids.push(created_booking_offer.id)
-        end
-
-        @booking.booking_search_rounds.create!(
-          radius_km: 10,
-          status: "searching",
-          started_at: Time.now,
-          deadline_at: 10.minutes.from_now,
-        )
-
-        @booking.update(status: "searching_partner", assignment_mode: "broadcast")
-        end
       end
-
-      booking_offer_ids.each do |booking_offer_id|
-        BookingOfferExpirationJob.set(wait_untill: 10.minutes.from_now).perform_later(booking_offer_id)
-      end
-      @booking
   end
 end

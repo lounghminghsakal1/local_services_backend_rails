@@ -16,18 +16,15 @@ class Api::V1::Partner::BookingOffersController < ApplicationController
   def in_progress
     partner = Partner.find(params[:partner_id])
     booking_offer = BookingOffer.find(params[:id])
-    booking = Booking.find(booking_offer.booking_id)
-    booking.update!(status: "in_progress")
-    render_success(data: BookingSerializer.new(booking).as_json)
+    in_progress_booking = Bookings::HandleBookingLifecycleService.new(partner: partner, booking_offer: booking_offer).in_progress
+    render_success(data: BookingSerializer.new(in_progress_booking).as_json)
   end
 
   def complete
     partner = Partner.find(params[:partner_id])
     booking_offer = BookingOffer.find(params[:id])
-    booking = Booking.find(booking_offer.booking_id)
-    booking.update!(status: "completed")
-    partner.update!(is_currently_working: false)
-    render_success(data: BookingSerializer.new(booking).as_json)
+    completed_booking = Bookings::HandleBookingLifecycleService.new(partner: partner, booking_offer: booking_offer).complete
+    render_success(data: BookingSerializer.new(completed_booking).as_json)
   end
 end
 

@@ -9,7 +9,7 @@ class Booking < ApplicationRecord
   has_many :booking_search_rounds
 
   validates :scheduled_at, presence: true
-  validates :duration_mins, presence: true
+  validates :duration_mins, presence: true, numericality: { greater_than: 0 }
 
   enum :status, {
     pending_admin_review: "pending_admin_review",

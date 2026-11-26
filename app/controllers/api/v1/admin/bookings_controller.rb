@@ -14,6 +14,16 @@ class Api::V1::Admin::BookingsController < ApplicationController
   end
 
   def index
+    all_bookings = Booking.where(status: "pending_admin_review")
+    all_bookings_serialized_array = all_bookings.map do |booking|
+      BookingSerializer.new(booking).as_json
+    end
+    render_success(data: all_bookings_serialized_array)
+  end
+
+  def show
+    booking = Booking.find(params[:id])
+    render_success(data: BookingSerializer.new(booking).as_json)
   end
 end
 

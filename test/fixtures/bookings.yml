@@ -1,0 +1,17 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  customer: one
+  partner: one
+  service_category: one
+  address: one
+  assignment_mode: broadcast
+  status: searching_partner
+
+two:
+  customer: two
+  partner: two
+  service_category: two
+  address: two
+  assignment_mode: broadcast
+  status: searching_partner

@@ -7,6 +7,8 @@ module Bookings
     end
 
     def call
+      # This is admin api so 2 or more admins can simultaneously try to do manual assign for one booking so acquire lock
+      @booking.with_lock do   # Here object.with_lock will lock the row and give us a transaction block so we can do both in a single line
       # check booking is in correct status or not
       if @booking.status != Booking::BOOKING_ASSIGNABLE_STATUS # "pending_admin_review"
         raise AppError.new("Booking which is in pending admin review status only can be assigned, currently the booking is #{@booking.status}",
@@ -25,15 +27,15 @@ module Bookings
       missing_ids = partner_ids - parnters.map(&:id)
 
       unless missing_ids.empty?
-        raise AppError.new("These partner ids are not found, missing: #{missing_ids.join(", ")}")
+        raise AppError.new("These partner ids are not found, missing: #{missing_ids.join(", ")}", status: :unprocessable_entity)
       end
 
-      inactive_partners = parnters.reject do |partner|
-        partner.status == "inactive"
+      inactive_partners = parnters.select do |partner|
+        !partner.active?
       end
 
       unless inactive_partners.empty?
-        raise AppError.new("These partners are inactive, inactive: #{inactive_partners.map(&:user.name)}")
+        raise AppError.new("These partners are inactive, inactive: #{inactive_partners.map { |p| p.user.name }.join(", ")}", status: :unprocessable_entity)
       end
 
       parnters.each do |partner|
@@ -48,19 +50,29 @@ module Bookings
         end
       end
 
-      # All validations are passed so send booking offer and update booking status
-      Booking.transaction do
+      current_time = Time.now
+      booking_offer_expiry_time = 10.minutes.from_now
+
+      booking_offer_ids = []
+
+        # All validations are passed so send booking offer and update booking status
+
         parnters.each do |partner|
-        partner.booking_offers.create!(
+        created_booking_offer = partner.booking_offers.create!(
           booking: @booking,
           assigned_by_admin_id: @admin.id,
           source: "manual",
-          offered_at: Time.now,
-          expires_at: 10.minutes.from_now,
+          offered_at: current_time,
+          expires_at: booking_offer_expiry_time,
         )
+        booking_offer_ids.push(created_booking_offer.id)
       end
 
       @booking.update!(status: "awaiting_partner_response", assignment_mode: "manual")
+      end
+
+      booking_offer_ids.each do |booking_offer_id|
+        BookingOfferExpirationJob.set(wait_until: booking_offer_expiry_time).perform_later(booking_offer_id)
       end
 
       @booking

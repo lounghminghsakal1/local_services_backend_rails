@@ -6,6 +6,8 @@ class BookingSerializer
   def as_json
     {
       id: @booking.id,
+      status: @booking.status,
+      service: @booking.service_category.category_name,
       customer_name: @booking.customer.user.name,
       address: {
         address_line: @booking.address.address_line,

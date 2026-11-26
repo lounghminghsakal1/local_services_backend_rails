@@ -16,7 +16,7 @@ class BookingOfferSerializer
     }
   end
 
-  private_class_method
+  private
 
   def serialize_partner
     {

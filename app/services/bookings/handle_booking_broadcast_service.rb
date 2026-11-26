@@ -6,30 +6,35 @@ module Bookings
     end
 
     def call
-      unless @booking.pending_admin_review?
-        raise AppError.new("Booking must be at status of pending admin review, but its #{@booking.status}", status: :unprocessable_entity)
-      end
+      ApplicationRecord.transaction do
+        @booking.lock!
+        unless @booking.pending_admin_review?  # Here , this api is admin api , here in this line it checks the booking is already in other status or not so this check can be done by 2 or more admin request so if its concurrently came then
+          # then both requests read the same status and proceeds to change it , resulting in duplicate data so we lock the booking so another request wait for the lock to be released and once its free and another request got the data , the booking ststus would have changed to any other which make the another request to return the
+          # error response instead of creating new duplicate record
+          # so whenever we are updating a record based on checking its status first, its better to acquire a lock
+          raise AppError.new("Booking must be at status of pending admin review, but its #{@booking.status}", status: :unprocessable_entity)
+        end
 
-      fresh_after = 3.hours.ago
+        fresh_after = 3.hours.ago
 
-      partner_lat_sql = <<~SQL
-        CASE#{' '}
-        WHEN partners.location_updated_at >= :fresh_after
-        THEN partners.current_lat
-        ELSE residential_addresses.latitude
-        END
-      SQL
+        partner_lat_sql = <<~SQL
+          CASE#{' '}
+          WHEN partners.location_updated_at >= :fresh_after
+          THEN partners.current_lat
+          ELSE residential_addresses.latitude
+          END
+        SQL
 
-      partner_long_sql = <<~SQL
-        CASE#{' '}
-        WHEN partners.location_updated_at >= :fresh_after
-        THEN partners.current_long
-        ELSE residential_addresses.longitude
-        END
-      SQL
+        partner_long_sql = <<~SQL
+          CASE#{' '}
+          WHEN partners.location_updated_at >= :fresh_after
+          THEN partners.current_long
+          ELSE residential_addresses.longitude
+          END
+        SQL
 
-      booking_lat = @booking.address.latitude
-      booking_long = @booking.address.longitude
+        booking_lat = @booking.address.latitude
+        booking_long = @booking.address.longitude
 
 distance_sql = <<~SQL
   (
@@ -68,7 +73,7 @@ SQL
 
       # fetch the partners who are currently not in any work, who are within initial radius defined in search round, who can provide the service that booking requested
       eligible_partners = Partner.joins(:partner_services)
-                                  .joins(:resedential_address)
+                                  .joins("LEFT JOIN addresses residential_addresses ON residential_addresses.id = partners.residential_address_id") # left join keeps left table records (partners) so the partners who have no residential address record but fresh lat, long updates will remain
                                   .where(
                                     partner_services: {
                                       service_category_id: @booking.service_category_id,
@@ -90,10 +95,11 @@ SQL
         )
         .distinct
 
-        ActiveRecord::Base.transaction do
+
+        booking_offers_ids = []
         # Got eligible partners so send them booking offer and create booking round entry
         eligible_partners.each do |partner|
-          partner.booking_offers.create!(
+          created_booking_offer = partner.booking_offers.create!(
             booking: @booking,
             assigned_by_admin: @admin,
             source: "broadcast",
@@ -101,6 +107,7 @@ SQL
             search_radius_km: 10,
             expires_at: 10.minutes.from_now,
           )
+          booking_offers_ids.push(created_booking_offer.id)
         end
 
         @booking.booking_search_rounds.create!(
@@ -112,8 +119,11 @@ SQL
 
         @booking.update(status: "searching_partner", assignment_mode: "broadcast")
         end
+      end
 
-        @booking
-    end
+      booking_offer_ids.each do |booking_offer_id|
+        BookingOfferExpirationJob.set(wait_untill: 10.minutes.from_now).perform_later(booking_offer_id)
+      end
+      @booking
   end
 end

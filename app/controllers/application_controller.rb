@@ -2,6 +2,7 @@ class ApplicationController < ActionController::API
 rescue_from ActiveRecord::RecordNotFound, with: :handle_not_found
 rescue_from ActiveRecord::RecordInvalid, with: :handle_invalid_record
 rescue_from AppError, with: :handle_app_error
+rescue_from ActionController::ParameterMissing, with: :handle_param_missing
 
 def handle_not_found(exception)
   render_failure(errors: exception.message, message: "Not found", status: :not_found)
@@ -13,6 +14,10 @@ end
 
 def handle_app_error(exception)
   render_failure(errors: exception.message, message: "App error", status: exception.status)
+end
+
+def handle_param_missing(exception)
+  render_failure(errors: exception.message, message: "Missing params", status: :unprocessable_entity)
 end
 
 def render_success(data:, message: "Action successfull", status: :ok)

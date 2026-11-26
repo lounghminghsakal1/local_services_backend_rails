@@ -5,7 +5,7 @@ class Partner < ApplicationRecord
   has_many :booking_offers
   has_many :booking_assignments
   has_many :bookings
-  belongs_to :resedential_address, class_name: "Address", optional: true
+  belongs_to :residential_address, class_name: "Address", optional: true
 
   validates :current_lat, presence: true
   validates :current_long, presence: true

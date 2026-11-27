@@ -6,6 +6,7 @@ module Bookings
     end
 
     def call
+       booking_offer_ids = []
       ApplicationRecord.transaction do
         @booking.lock!
         unless @booking.pending_admin_review?  # Here , this api is admin api , here in this line it checks the booking is already in other status or not so this check can be done by 2 or more admin request so if its concurrently came then
@@ -32,8 +33,8 @@ module Bookings
         eligible_partners = []
         radius = 10
         while eligible_partners.empty?
-          break if initial_radius > 50
-          eligible_partners = find_eligible_partners(radius)
+          break if radius > 50
+          eligible_partners = find_eligible_partners(radius_km: radius)
           radius += 20
         end
 
@@ -41,7 +42,7 @@ module Bookings
           raise AppError.new("No eligible partner is found within 50km radius", status: :unprocessable_entity)
         end
 
-        booking_offer_ids = []
+
         # Got eligible partners so send them booking offer and create booking round entry
         eligible_partners.each do |partner|
           created_booking_offer = partner.booking_offers.create!(
@@ -49,14 +50,14 @@ module Bookings
             assigned_by_admin: @admin,
             source: "broadcast",
             offered_at: Time.now,
-            search_radius_km: 10,
+            search_radius_km: radius,
             expires_at: 10.minutes.from_now,
           )
           booking_offer_ids.push(created_booking_offer.id)
         end
 
         @booking.booking_search_rounds.create!(
-          radius_km: 10,
+          radius_km: radius,
           status: "searching",
           started_at: Time.now,
           deadline_at: 10.minutes.from_now,

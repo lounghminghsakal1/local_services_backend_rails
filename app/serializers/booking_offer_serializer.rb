@@ -8,7 +8,7 @@ class BookingOfferSerializer
       id: @booking_offer.id,
       partner: serialize_partner,
       response: @booking_offer.response,
-      assigned_by: @booking_offer.assigned_by_admin.user.name,
+      assigned_by: @booking_offer.assigned_by_admin&.user&.name,
       source: @booking_offer.source,
       offered_at: @booking_offer.offered_at,
       search_radius_km: @booking_offer.search_radius_km,

@@ -37,4 +37,8 @@ class Booking < ApplicationRecord
   }, prefix: :decision
 
   BOOKING_ASSIGNABLE_STATUS = "pending_admin_review"
+  SEARCH_ROUND_DURATION = ENV.fetch("SEARCH_ROUND_MINUTES", 10).to_i.minutes
+  CUSTOMER_DECISION_WINDOW = 30.minutes
+  MIN_EXTRA_WAIT_MINS = 10
+  MAX_EXTRA_WAIT_MINS = 120
 end

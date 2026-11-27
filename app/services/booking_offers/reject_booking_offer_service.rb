@@ -29,6 +29,7 @@ module BookingOffers
         @booking_offer.update!(response: "rejected", responded_at: Time.now)
         if booking.booking_offers.pending.none?  # no booking offer is pending -> meaning all are rejected or expired or no accpeted so revert back the status to pendin_admin_review so admin can decide
           booking.update!(status: "pending_admin_review")
+          booking.booking_search_rounds.searching.update_all(status: "stopped", completed_at: Time.current)
         end
       end
 

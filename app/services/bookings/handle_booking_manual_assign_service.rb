@@ -7,6 +7,10 @@ module Bookings
     end
 
     def call
+      current_time = Time.now
+      booking_offer_expiry_time = 10.minutes.from_now
+
+      booking_offer_ids = []
       # This is admin api so 2 or more admins can simultaneously try to do manual assign for one booking so acquire lock
       @booking.with_lock do   # Here object.with_lock will lock the row and give us a transaction block so we can do both in a single line
       # check booking is in correct status or not
@@ -49,11 +53,6 @@ module Bookings
           raise AppError.new("This parnter #{partner.user.name} is currently working in another booking", status: :unprocessable_entity)
         end
       end
-
-      current_time = Time.now
-      booking_offer_expiry_time = 10.minutes.from_now
-
-      booking_offer_ids = []
 
         # All validations are passed so send booking offer and update booking status
 

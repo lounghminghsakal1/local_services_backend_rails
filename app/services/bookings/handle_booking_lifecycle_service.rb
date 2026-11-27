@@ -12,6 +12,7 @@ module Bookings
 
       booking = Booking.find(@booking_offer.booking_id)
       booking.with_lock do
+        @partner.lock!
         unless booking.confirmed?
           raise AppError.new("Booking is not in confirmed to status, so cannot make it in_progress", status: :unprocessable_entity)
         end
@@ -20,12 +21,8 @@ module Bookings
           raise AppError.new("You cannot acces this booking", status: :unprocessable_entity)
         end
 
-        if @partner.is_currently_working
-          raise AppError.new("You are in another work", status: :unprocessable_entity)
-        end
-
-        booking.update(status: "in_progress")
-        @partner.update(is_currently_working: true)
+        booking.update!(status: "in_progress")
+        @partner.update!(is_currently_working: true)
       end
       booking
     end
@@ -43,10 +40,6 @@ module Bookings
 
         if booking.partner_id != @partner.id
           raise AppError.new("You cannot access this booking", status: :unprocessable_entity)
-        end
-
-        if @partner.is_currently_working
-          raise AppError.new("You are in another work", status: :unprocessable_entity)
         end
 
         booking.update(status: "completed")

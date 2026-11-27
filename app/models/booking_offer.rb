@@ -2,6 +2,7 @@ class BookingOffer < ApplicationRecord
   belongs_to :booking
   belongs_to :partner
   belongs_to :assigned_by_admin, class_name: "Admin", optional: true
+  belongs_to :booking_search_round, optional: true
 
   enum :response, {
     pending: "pending",

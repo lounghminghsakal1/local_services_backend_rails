@@ -18,7 +18,7 @@ module Bookings
         end
 
         if booking.partner_id != @partner.id
-          raise AppError.new("You cannot acces this booking", status: :unprocessable_entity)
+          raise AppError.new("You cannot acces this booking", status: :forbidden)
         end
 
         booking.update!(status: "in_progress")
@@ -39,7 +39,7 @@ module Bookings
         end
 
         if booking.partner_id != @partner.id
-          raise AppError.new("You cannot access this booking", status: :unprocessable_entity)
+          raise AppError.new("You cannot access this booking", status: :forbidden)
         end
 
         booking.update(status: "completed")

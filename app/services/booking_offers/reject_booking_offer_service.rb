@@ -7,7 +7,7 @@ module BookingOffers
 
     def call
       if @booking_offer.partner_id != @partner.id
-        raise AppError.new("You cannot reject this booking offer, this booking offer not belongs to you", status: :unauthorized)
+        raise AppError.new("You cannot reject this booking offer, this booking offer not belongs to you", status: :forbidden)
       end
 
       Booking.transaction do
@@ -27,9 +27,18 @@ module BookingOffers
 
         # update booking offer
         @booking_offer.update!(response: "rejected", responded_at: Time.now)
-        if booking.booking_offers.pending.none?  # no booking offer is pending -> meaning all are rejected or expired or no accpeted so revert back the status to pendin_admin_review so admin can decide
+        if booking.assignment_mode == "broadcast"
+          # Broadcast: when the whole round has been answered there is no reason to wait for its timer.
+          # The service closes the round and moves on (20 km round / ask the customer / partner_not_available).
+          round = @booking_offer.booking_search_round
+          if round && round.booking_offers.pending.none?
+            round.lock!
+            Bookings::ExpireSearchRoundService.new(booking: booking, round: round).call
+          end
+        elsif booking.booking_offers.pending.none?
+          # Manual: no booking offer is pending -> all are rejected or expired, so give the booking back
+          # to the admin (pending_admin_review) so the admin can decide.
           booking.update!(status: "pending_admin_review")
-          booking.booking_search_rounds.searching.update_all(status: "stopped", completed_at: Time.current)
         end
       end
 

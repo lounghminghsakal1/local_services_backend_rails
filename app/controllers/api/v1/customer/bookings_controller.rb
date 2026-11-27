@@ -1,17 +1,18 @@
 class Api::V1::Customer::BookingsController < ApplicationController
+  before_action :authenticate_customer! # every action below works on current_customer (from the token)
+
   def create
-    customer = Customer.find(params[:customer_id]) # find will throw error if no customer found, thrown error will be catched in ApplicationController
-    created_booking = Bookings::CreateBookingService.new(customer: customer, booking_params: booking_params).call
+    created_booking = Bookings::CreateBookingService.new(customer: current_customer, booking_params: booking_params).call
     render_success(data: BookingSerializer.new(created_booking).as_json, message: "Booking created successfully", status: :created)
   end
 
   def index
-    bookings = Booking.includes(
+    bookings = current_customer.bookings.includes(
       { customer: :user },
       { partner: :user },
       :address,
       :service_category,
-    ).where(customer_id: params[:customer_id])
+    )
     bookings_array = bookings.map do |booking|
         BookingSerializer.new(booking).as_json
     end
@@ -19,8 +20,20 @@ class Api::V1::Customer::BookingsController < ApplicationController
   end
 
   def show
-    booking = Booking.includes({ customer: :user }, { partner: :user }, :address, :service_category).find_by!(id: params[:id], customer_id: params[:customer_id])
+    # Scoped to current_customer: someone else's booking id gives 404, same as an id that does not exist
+    booking = current_customer.bookings.includes({ customer: :user }, { partner: :user }, :address, :service_category).find(params[:id])
     render_success(data: BookingSerializer.new(booking).as_json, message: "Booking fetched successfully")
+  end
+
+  # Customer's answer when no professional was found: { decision: "wait"|"cancel", wait_minutes }
+  def search_decision
+    booking = current_customer.bookings.find(params[:id])
+    decided_booking = Bookings::HandleCustomerSearchDecisionService.new(
+      booking: booking,
+      decision: params.require(:decision),
+      wait_minutes: params[:wait_minutes]
+    ).call
+    render_success(data: BookingSerializer.new(decided_booking).as_json, message: "Decision saved")
   end
 
   private
@@ -40,8 +53,8 @@ end
 # Now find out from where we are going to get these fields (data),
 # customer_id got from logged in customer and other fields are customer has to select because the booking is for customer , so this booking is mainly revolving around customer
 # so now write down the request payload
+# (customer_id is NOT sent any more: it comes from the Authorization: Bearer <token> header)
 # {
-# customer_id:   -> here customer_id got from authenticated user but i didn't write authentication yet so this approach for now
 # booking: {
 #   service_category_id:
 #   address_id:

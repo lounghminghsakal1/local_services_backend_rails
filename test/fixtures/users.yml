@@ -1,13 +1,14 @@
 # Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+# Every fixture user has the password "password123" (low bcrypt cost keeps tests fast).
 
 one:
-  name: MyString
-  email: MyString
-  password_hash: MyString
+  name: Partner One
+  email: partner.one@example.com
+  password_digest: <%= BCrypt::Password.create("password123", cost: 4) %>
   role: partner
 
 two:
-  name: MyString
-  email: MyString
-  password_hash: MyString
+  name: Partner Two
+  email: partner.two@example.com
+  password_digest: <%= BCrypt::Password.create("password123", cost: 4) %>
   role: partner

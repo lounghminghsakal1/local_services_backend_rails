@@ -2,7 +2,7 @@ module Bookings
   class StartSearchRoundService
     FRESH_LOCATION_WINDOW = 3.hours
     def initialize(booking:, radius_km:, deadline_at:, admin: nil)
-      @boooking = booking
+      @booking = booking
       @radius_km = radius_km
       @deadline_at = deadline_at
       @admin = admin
@@ -10,10 +10,10 @@ module Bookings
 
     def call
       partners = eligible_partners.to_a
-      nil if partners.empty?
+      return nil if partners.empty?
 
       now = Time.current
-      booking_search_round = @boooking.booking_search_rounds.create!(
+      booking_search_round = @booking.booking_search_rounds.create!(
         radius_km: @radius_km,
         status: "searching",
         started_at: now,
@@ -22,19 +22,21 @@ module Bookings
 
       partners.each do |partner|
         booking_search_round.booking_offers.create!(
-          booking: @boooking,
+          booking: @booking,
           partner: partner,
           assigned_by_admin: @admin,
           source: "broadcast",
           offered_at: now,
           search_radius_km: @radius_km,
-          expires_at: deadline_at
+          expires_at: @deadline_at
         )
       end
 
-      BookingOfferExpirationJob.set(wait_until: @deadline_at).perform_later(booking_search_round.id)
+      BookingSearchRoundExpirationJob.set(wait_until: @deadline_at).perform_later(booking_search_round.id)
       booking_search_round
     end
+
+    private
 
     def eligible_partners
       lat  = "CASE WHEN partners.location_updated_at >= :fresh_after THEN partners.current_lat  ELSE residential_addresses.latitude  END"

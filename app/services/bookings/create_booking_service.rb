@@ -26,7 +26,7 @@ end
 
 # write down payload here also so that it would be easy
 # {
-# customer_id:   -> here customer_id got from authenticated user but i didn't write authentication yet so this approach for now
+# (customer_id is not sent any more: it comes from the Authorization: Bearer <token> header)
 # booking: {
 #   service_category_id:
 #   address_id:

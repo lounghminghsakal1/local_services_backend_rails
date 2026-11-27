@@ -10,10 +10,17 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       namespace :customer do
-        resources :bookings, only: [ :create, :index, :show ]
+        post :signup, to: "auth#signup"
+        post :login, to: "auth#login"
+        resources :bookings, only: [ :create, :index, :show ] do
+          member do
+            post :search_decision
+          end
+        end
       end
 
       namespace :admin do
+        post :login, to: "auth#login"
         resources :bookings, only: [ :show, :index ] do
           member do
             post :manual_assign
@@ -23,6 +30,8 @@ Rails.application.routes.draw do
       end
 
       namespace :partner do
+        post :signup, to: "auth#signup"
+        post :login, to: "auth#login"
         resources :booking_offers, only: [ :show, :index ] do
           member do
             post :accept

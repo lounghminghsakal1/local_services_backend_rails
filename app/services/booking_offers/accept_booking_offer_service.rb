@@ -11,7 +11,7 @@ module BookingOffers
       # so its an immediate check based on immutable column so we can put it outside lock
       # # 1. Fast-fail immutable checks outside the transaction
       if @booking_offer.partner_id != @partner.id
-        raise AppError.new("You cannot accept this booking offer", status: :unauthorized)
+        raise AppError.new("You cannot accept this booking offer", status: :forbidden)
       end
 
       # started transaction here itself because we are going to acquire locks to prevent race conditions

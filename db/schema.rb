@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_094249) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -25,8 +25,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_094249) do
     t.bigint "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.decimal "latitude", precision: 10, scale: 6, default: "17.29", null: false
-    t.decimal "longitude", precision: 10, scale: 6, default: "78.29", null: false
+    t.decimal "latitude", precision: 10, scale: 6, null: false
+    t.decimal "longitude", precision: 10, scale: 6, null: false
     t.index ["user_id"], name: "index_addresses_on_user_id"
   end
 
@@ -53,7 +53,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_094249) do
     t.bigint "booking_id", null: false
     t.bigint "partner_id", null: false
     t.string "response", default: "pending"
-    t.bigint "assigned_by_admin_id", null: false
+    t.bigint "assigned_by_admin_id"
     t.string "source"
     t.datetime "offered_at"
     t.integer "search_radius_km"
@@ -61,8 +61,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_094249) do
     t.datetime "responded_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "booking_search_round_id"
     t.index ["assigned_by_admin_id"], name: "index_booking_offers_on_assigned_by_admin_id"
+    t.index ["booking_id", "response"], name: "index_booking_offers_on_booking_id_and_response"
     t.index ["booking_id"], name: "index_booking_offers_on_booking_id"
+    t.index ["booking_search_round_id"], name: "index_booking_offers_on_booking_search_round_id"
     t.index ["partner_id"], name: "index_booking_offers_on_partner_id"
   end
 
@@ -144,10 +147,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_094249) do
   create_table "users", force: :cascade do |t|
     t.string "name", null: false
     t.string "email", null: false
-    t.string "password_hash", null: false
+    t.string "password_digest", null: false
     t.string "role", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
   end
 
   add_foreign_key "addresses", "users"
@@ -156,6 +160,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_094249) do
   add_foreign_key "booking_assignments", "bookings"
   add_foreign_key "booking_assignments", "partners"
   add_foreign_key "booking_offers", "admins", column: "assigned_by_admin_id"
+  add_foreign_key "booking_offers", "booking_search_rounds"
   add_foreign_key "booking_offers", "bookings"
   add_foreign_key "booking_offers", "partners"
   add_foreign_key "booking_search_rounds", "bookings"

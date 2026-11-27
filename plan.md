@@ -161,7 +161,9 @@ than raw enum values.
                                                   request expired
 
   No provider available   No professional         Search ended without an
-                          available               assignment
+                          available               assignment (including
+                                                  the customer's extended
+                                                  search)
   -----------------------------------------------------------------------
 
 Avoid exposing internal technical states such as `provider_assigned`
@@ -172,35 +174,73 @@ directly if a more understandable label is available.
 1.  Customer chooses a service and submits a booking request.
 2.  Booking is created and appears in the admin booking queue.
 3.  Admin chooses one of:
-    -   Manually offer the booking to a selected eligible provider.
+    -   Manually offer the booking to one or more selected eligible
+        providers. Each manual offer expires 10 minutes after it is
+        sent. If every manual offer is rejected or expires, the booking
+        returns to admin review so the admin can assign again or switch
+        to broadcast.
     -   Start broadcast assignment.
-4.  In broadcast mode:
-    -   Search eligible, active providers within 10 km.
-    -   Send offers to eligible providers.
-    -   Search round lasts up to 10 minutes.
-    -   If no provider accepts, expand to 20 km and notify newly
-        eligible providers.
-    -   Search the 20 km round for up to another 10 minutes.
-5.  If no provider is assigned, ask the customer to:
-    -   Continue searching up to 50 km for up to two hours, with a clear
+4.  In broadcast mode the search runs in rounds:
+    -   **Round 1:** search eligible, active providers within 10 km and
+        send them offers. The round lasts up to 10 minutes.
+    -   **Round 2:** if no provider accepts, expand to 20 km and send
+        offers only to providers who have **not** already received an
+        offer for this booking in an earlier round. The round lasts up
+        to another 10 minutes.
+    -   An offer expires at the same moment as the round it belongs to.
+        When a round ends without an acceptance, its pending offers are
+        expired and the round is closed.
+    -   If every provider in a round rejects (or no provider is
+        eligible), the round ends immediately instead of waiting for
+        its deadline.
+5.  If no provider is assigned after round 2, move the booking to
+    "awaiting customer decision" and ask the customer to:
+    -   Continue searching up to 50 km for a waiting time the customer
+        chooses (minimum 10 minutes, maximum 2 hours), with a clear
         explanation that additional travel charges may apply; or
     -   Cancel the booking.
 6.  Customer decision window is 30 minutes from when the decision is
     presented.
 7.  If the customer does not respond within 30 minutes, expire the
     booking and notify them.
-8.  If the customer chooses extended search, begin the 50 km search and
-    start the two-hour deadline from that decision.
+8.  If the customer chooses extended search, begin the 50 km search
+    immediately. The extended search deadline is the moment of the
+    decision plus the waiting time the customer chose. Offers go only
+    to providers who have not already received an offer for this
+    booking, and they expire at that same deadline. This extra search
+    happens **once**: the customer is not asked again. If nobody
+    accepts by the deadline (or nobody is eligible), the booking ends as
+    "no provider available".
 9.  When a provider accepts, atomically assign that provider and stop
-    further discovery/offers.
+    further discovery/offers: the search round is completed and the
+    booking's other pending offers are closed.
 10. Provider and customer receive confirmation.
 11. Provider progresses the job through the permitted service states.
 12. Booking is completed. Customer pays the provider in person.
 
 **Important UX distinction:** The 10-minute and 20-minute periods are
-search-round limits. Individual provider offers should have a shorter,
-configurable response expiry. The UI should show the actual offer expiry
-to providers.
+search-round limits, and every offer in a round expires together with
+that round. The UI should show providers the actual offer expiry (the
+round deadline) as a countdown.
+
+### 4.2.1 Timers and automatic transitions
+
+Every deadline below is enforced by a scheduled background job. A job
+re-checks the booking's current state when it runs and does nothing if
+the booking has already moved on (accepted, rejected, cancelled or
+decided), so a job never needs to be cancelled.
+
+| Timer | Starts when | Length | If nobody has acted |
+|---|---|---|---|
+| Manual offer | Admin sends the offer | 10 minutes | Offer expires; if no pending offers remain, booking returns to admin review |
+| Search round 1 (10 km) | Admin starts broadcast | 10 minutes | Offers expire, round closes, round 2 opens |
+| Search round 2 (20 km) | Round 1 ends | 10 minutes | Offers expire, round closes, customer is asked to decide |
+| Customer decision | Customer is asked | 30 minutes | Booking expires ("Request expired") |
+| Extended search (50 km) | Customer chooses to keep searching | Waiting time chosen by the customer (10 minutes to 2 hours) | Offers expire, round closes, booking becomes "no provider available" |
+
+If a round has no eligible provider, it is skipped immediately instead
+of waiting for its timer. If even the first broadcast finds nobody, the
+admin sees an error and the booking stays in admin review.
 
 ### 4.3 Customer decision screen
 
@@ -210,10 +250,12 @@ Suggested copy:
 
 "We couldn't find an available professional within 20 km right now."
 
-Primary option: - **Keep searching** - Supporting text: "We'll expand
-the search up to 50 km for up to 2 hours. A professional may be farther
-away and additional travel charges may apply. Any extra charge will be
-explained before you confirm the service."
+Primary option: - **Keep searching** - Time selector: "How long should
+we keep searching?" (minimum 10 minutes, maximum 2 hours). - Supporting
+text: "We'll expand the search up to 50 km for the time you choose. A
+professional may be farther away and additional travel charges may
+apply. Any extra charge will be explained before you confirm the
+service."
 
 Secondary option: - **Cancel booking**
 
@@ -221,9 +263,11 @@ Show a visible 30-minute response deadline. Do not use vague copy such
 as "wait for some time."
 
 If the customer chooses to continue, show: - Search extended. - Maximum
-search area: up to 50 km. - Maximum search time: up to 2 hours. - Any
-confirmed extra travel charge or the fact that it will be discussed
-before confirmation.
+search area: up to 50 km. - Search time: the time the customer chose
+(up to 2 hours), with the exact end time shown. - Any confirmed extra
+travel charge or the fact that it will be discussed before confirmation.
+The customer is not asked to decide a second time: if nobody accepts
+by that end time, show "No professional available".
 
 If the customer does not respond: - Show that the request expired. -
 Explain that no provider was assigned. - Offer a clear path to create a
@@ -472,9 +516,11 @@ Admin flow: 1. Select broadcast mode. 2. View the initial 10 km search
 area and eligible-provider count. 3. Start broadcast. 4. Monitor offers
 and responses. 5. See the 10-minute round deadline. 6. If unsuccessful,
 start/observe the 20 km round according to the configured automatic
-policy. 7. If still unsuccessful, see the customer-decision state. 8.
-After customer consent, monitor the 50 km extended search. 9. Stop
-search immediately after a valid assignment or cancellation.
+policy (offers go only to providers not already offered this booking).
+7. If still unsuccessful, see the customer-decision state (30-minute
+window). 8. After customer consent, monitor the 50 km extended search,
+which ends at the waiting time the customer chose. 9. Stop search
+immediately after a valid assignment or cancellation.
 
 Admin should be able to see: - Radius. - Search-round start and
 deadline. - Number of eligible providers. - Number of offers sent. -
@@ -732,17 +778,17 @@ These decisions affect both UX and backend behavior:
 
 1.  **Admin review:** Does every booking wait for admin review, or can
     the system begin broadcast automatically?
-2.  **Manual offer expiry:** How long does a manually selected provider
-    have to accept?
-3.  **Broadcast offer expiry:** How long does each provider have to
-    respond to an offer?
-4.  **Broadcast concurrency:** Do all eligible providers receive offers
-    at once, or are offers sent in batches?
+2.  **Manual offer expiry:** *Decided: 10 minutes.*
+3.  **Broadcast offer expiry:** *Decided: an offer expires together with
+    its search round (10 minutes for rounds 1 and 2; the customer's
+    chosen waiting time for the extended search).*
+4.  **Broadcast concurrency:** *Decided: all eligible providers in a
+    round receive their offers at once. Later rounds only add providers
+    who have not already been offered the booking.*
 5.  **Provider acceptance:** Does acceptance immediately confirm the
     booking, or does admin/customer confirmation remain necessary?
-6.  **Customer timeout:** At 30 minutes without a decision, should the
-    booking become `expired` or `cancelled`? Recommended UI label:
-    "Request expired."
+6.  **Customer timeout:** *Decided: at 30 minutes without a decision the
+    booking becomes `expired`. UI label: "Request expired."*
 7.  **Extended-search charge:** Is the extra travel charge fixed,
     estimated, or agreed with the provider/customer before confirmation?
 8.  **Provider cancellation:** Can a provider cancel after accepting?
